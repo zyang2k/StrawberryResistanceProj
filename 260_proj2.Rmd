@@ -1,0 +1,214 @@
+---
+title: "260_Proj2"
+author: "Yi-Syuan Yen"
+date: "2025-02-01"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(tidyverse)
+library(lme4)
+library(gt)
+library(ordinal)
+```
+
+## Data preprocessing
+
+We have missing completely at random. Thus, we delete rows with missing entries or plot numbers.
+
+We combine the datasets of disease scores and strawberries traits.
+
+There are 3 datasets: `df.merge.bot`, `df.merge.col`, `df.merge.NPT`, for the 3 diseases.
+
+```{r}
+brix = read.csv("/Users/ysyen/Desktop/260/proj2/2024_Consolidated_BrixAcid.csv")
+col = read.csv("/Users/ysyen/Desktop/260/proj2/Clean_Col_Ratings.csv")
+bot = read.csv("/Users/ysyen/Desktop/260/proj2/Clean_Bot_Ratings.csv")
+NPT = read.csv("/Users/ysyen/Desktop/260/proj2/Clean_NPT_Ratings.csv")
+f = read.csv("/Users/ysyen/Desktop/260/proj2/Firmness.csv")
+
+col = col %>% select(Score, HarvestDate, Entry, Block, HarvestPeriod)
+bot = bot %>% select(Score, HarvestDate, Entry, Block, HarvestPeriod)
+NPT = NPT %>% select(Score, HarvestDate, Entry, Block, HarvestPeriod)
+
+col = col %>% filter(is.na(Entry)==F)
+bot = bot %>% filter(is.na(Entry)==F)
+NPT = NPT %>% filter(is.na(Entry)==F)
+# Entry denotes different cultivars
+```
+
+```{r}
+# Missing rows
+# print("bot")
+# rownames(bot[is.na(bot$Entry),])
+# 
+# print("NPT")
+# rownames(NPT[is.na(NPT$Entry),])
+```
+
+
+```{r}
+brix_sim = brix[, c("Harvest_Date", "Plot", "Block","Entry","Brix", "CorrectedTitro")]
+f_sim = f[, c("HarvestPeriod", "Plot", "Block","Entry","Firmness.kg")]
+colnames(brix_sim)[1] = "HarvestDate"
+
+f_mean<- aggregate(x= f_sim$Firmness.kg,
+                      # Specify group indicator
+                      by = list(f_sim$HarvestPeriod,f_sim$Plot,f_sim$Block,f_sim$Entry),      
+                      # Specify function (i.e. mean)
+                      FUN = mean)
+colnames(f_mean) = colnames(f_sim)
+
+df.merge.col = merge(col, brix_sim, by = c("Block","Entry","HarvestDate"), all.x = TRUE)
+df.merge.bot = merge(bot, brix_sim, by = c("Block","Entry","HarvestDate"), all.x = TRUE)
+df.merge.NPT = merge(NPT, brix_sim, by = c("Block","Entry","HarvestDate"), all.x = TRUE)
+
+df.merge.col = df.merge.col %>% filter(is.na(Plot)==F)
+df.merge.bot = df.merge.bot %>% filter(is.na(Plot)==F)
+df.merge.NPT = df.merge.NPT %>% filter(is.na(Plot)==F)
+
+df.merge.col = merge(df.merge.col, f_mean, 
+                     by = c("Block","Entry","HarvestPeriod","Plot"), all.x = TRUE)
+df.merge.bot = merge(df.merge.bot, f_mean, 
+                     by = c("Block","Entry","HarvestPeriod","Plot"), all.x = TRUE)
+df.merge.NPT = merge(df.merge.NPT, f_mean, 
+                     by = c("Block","Entry","HarvestPeriod","Plot"), all.x = TRUE)
+
+df.merge.col$Block = factor(df.merge.col$Block)
+df.merge.col$Entry = factor(df.merge.col$Entry)
+df.merge.col$HarvestPeriod = factor(df.merge.col$HarvestPeriod)
+
+df.merge.bot$Block = factor(df.merge.bot$Block)
+df.merge.bot$Entry = factor(df.merge.bot$Entry)
+df.merge.bot$HarvestPeriod = factor(df.merge.bot$HarvestPeriod)
+
+df.merge.NPT$Block = factor(df.merge.NPT$Block)
+df.merge.NPT$Entry = factor(df.merge.NPT$Entry)
+df.merge.NPT$HarvestPeriod = factor(df.merge.NPT$HarvestPeriod)
+
+```
+
+```{r}
+rm(col,NPT,brix,bot)
+```
+
+## Data cleaning
+
+```{r}
+c.df = df.merge.bot %>% group_by(HarvestPeriod,Block,Entry) %>%tally() 
+# table(c.df$Entry)[table(c.df$Entry)==6]
+df.merge.bot2 = df.merge.bot[df.merge.bot$Entry %in% names(table(c.df$Entry)[table(c.df$Entry)==6]),]
+```
+
+
+## EDA
+
+```{r}
+# Score distribution
+ggplot(df.merge.bot, aes(x=as.numeric(Score))) + 
+  geom_bar()+
+  theme_bw()+
+  xlab("Score")+
+  ggtitle("Barplot of Score(BOT)")
+
+ggplot(df.merge.col, aes(x=as.factor(Score))) + 
+  geom_bar()+
+  theme_bw()+
+  xlab("Score")+
+  ggtitle("Barplot of Score(COL)")
+
+ggplot(df.merge.NPT, aes(x=as.factor(Score))) + 
+  geom_bar()+
+  theme_bw()+
+  xlab("Score")+
+  ggtitle("Barplot of Score(NPT)")
+
+```
+
+
+```{r}
+# number of observation per cultivar/block/harvest/Entry
+obs = data.frame(table(df.merge.bot$Entry))
+hist(obs$Freq, xlab = "# of Observations", main = "Histogram of # of Obs")
+```
+
+```{r}
+# Score vs cultivar plot
+boxplot(df.merge.bot$Score~df.merge.bot$Block,ylab = "Score",xlab = "Block")
+boxplot(df.merge.bot$Score~df.merge.bot$HarvestPeriod,ylab = "Score",xlab = "Harvest")
+ggplot(df.merge.bot, aes(x=HarvestPeriod, y=Score, fill=Block)) +
+  geom_boxplot()+ theme_bw()
+
+# number of observation in each block
+# table(df.merge.bot$Block)
+# table(df.merge.bot$HarvestPeriod)
+```
+
+```{r}
+# Traits
+hist(df.merge.bot$Brix, xlab = "Brix", main = "Histogram of Brix")
+hist(df.merge.bot$CorrectedTitro, xlab = "Titro", main = "Histogram of Titro")
+hist(df.merge.bot$Firmness.kg, xlab = "Firmness", main = "Histogram of Firmness")
+```
+
+## Linear mixed model with Gaussian assumption
+
+$$Y_{ijk}=Cultivar_{ijk}+\beta_{1} Brix_{ijk}+\beta_{2}Titro_{ijk}+\beta_{3}Firmness_{ijk}+Harvest_{i}+Block_{ij}+\epsilon_{ijk}$$
+
+, where $Y_{ijk}$ is the severity score of the disease for the $k^{th}$ strawberry in the $i^{th}$ harvest and $j^{th}$ block.$Cultivar_{ijk}, Brix_{ijk}, Titro_{ijk}, Firmness_{ijk}$ are the fixed effect. $Harvest_{i}$~$N(0,\sigma_{h})$ is a random effect. $Block_{ij}$~$N(0,\sigma_{b})$ is the random effect of the $j^{th}$ block nested in the $i^{th}$ harvest. $\epsilon_{ijk}$~$N(0,\sigma_{e})$ is the error term. The random effects and the error terms are independent.
+
+$$Y_{ijk}=Cultivar_{ijk}+\beta_{1} Brix_{ijk}+\beta_{2}Titro_{ijk}+\beta_{3}Firmness_{ijk}+Harvest_{i}+Block_{j}+\epsilon_{ijk}$$
+
+, where $Block_{ij}$~$N(0,\sigma_{b})$ is the random effect of the $j^{th}$ block (not nested in the harvest).
+
+```{r}
+lmm1 = lmer(Score ~ Entry + Brix + CorrectedTitro + Firmness.kg + +(1 | HarvestPeriod)+(1 | HarvestPeriod:Block), data = df.merge.bot2)
+AIC(lmm1)
+plot(lmm1, type=c("p","smooth"), col.line=1)
+lattice::qqmath(lmm1)
+```
+
+## Mixed model with ordinal responses
+
+`clmm` requires that all random effects to have at least 3 levels.
+
+```{r}
+fmm2 <- clmm(factor(Score) ~  Entry +Brix + CorrectedTitro + Firmness.kg +  (1 | HarvestPeriod:Block), data = df.merge.bot2, link = "logit") 
+summary(fmm2) 
+```
+
+```{r}
+drop1(fmm2, test = "Chi")
+```
+
+```{r}
+fmm <- clmm(factor(Score) ~  Entry + Firmness.kg +  (1 | HarvestPeriod:Block), data = df.merge.bot2, link = "logit") 
+summary(fmm)  
+```
+
+Interpretation:
+
+We choose the lowest AIC or BIC as our best model, so logit link is used.
+
+```{r}
+link = c("logit", "probit", "cloglog", "loglog")
+compare = data.frame(link = link,
+                     AIC = rep(0,4),
+                     BIC = rep(0,4))
+
+for(i in 1:4){
+    fmm <- clmm(factor(Score) ~  Entry +Brix + CorrectedTitro + Firmness.kg +  (1 | HarvestPeriod:Block), data = df.merge.bot2, link = link[i]) 
+    compare[i,"AIC"] = AIC(fmm)
+    compare[i,"BIC"] = BIC(fmm)
+}
+gt(compare)
+```
+
+Pro
+
+Con: can only have 1 random effect
+
+Discussion: 
+- Few cultivars have significant p-values. We may consider increasing the sample size for each cultivar or combine some cultivars with similar genomes or characteristics into one group.
