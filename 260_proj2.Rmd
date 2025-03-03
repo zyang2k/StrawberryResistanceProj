@@ -159,24 +159,31 @@ $$Y_{ijk}=Cultivar_{ijk}+\beta_{1} Brix_{ijk}+\beta_{2}Titro_{ijk}+\beta_{3}Firm
 
 , where $Y_{ijk}$ is the severity score of the disease for the $k^{th}$ strawberry in the $i^{th}$ harvest and $j^{th}$ block.$Cultivar_{ijk}, Brix_{ijk}, Titro_{ijk}, Firmness_{ijk}$ are the fixed effect. $Harvest_{i}$~$N(0,\sigma_{h})$ is a random effect. $Block_{ij}$~$N(0,\sigma_{b})$ is the random effect of the $j^{th}$ block nested in the $i^{th}$ harvest. $\epsilon_{ijk}$~$N(0,\sigma_{e})$ is the error term. The random effects and the error terms are independent.
 
-$$Y_{ijk}=Cultivar_{ijk}+\beta_{1} Brix_{ijk}+\beta_{2}Titro_{ijk}+\beta_{3}Firmness_{ijk}+Harvest_{i}+Block_{j}+\epsilon_{ijk}$$
-
-, where $Block_{ij}$~$N(0,\sigma_{b})$ is the random effect of the $j^{th}$ block (not nested in the harvest).
 
 ```{r}
 lmm1 = lmer(Score ~ Entry + Brix + CorrectedTitro + Firmness.kg + +(1 | HarvestPeriod)+(1 | HarvestPeriod:Block), data = df.merge.bot2)
 AIC(lmm1)
-plot(lmm1, type=c("p","smooth"), col.line=1)
+
+par(mfrow=c(1,2))
+plot(lmm1, type=c("p","smooth"), col.line=1, xlab = "Fitted Value",
+     ylab = "Residual")
 lattice::qqmath(lmm1)
+
+s = summary(lmm1)
+gt(as.data.frame(s[["coefficients"]]),rownames_to_stub = T)
 ```
 
 ## Mixed model with ordinal responses
 
 `clmm` requires that all random effects to have at least 3 levels.
 
+
+
 ```{r}
 fmm2 <- clmm(factor(Score) ~  Entry +Brix + CorrectedTitro + Firmness.kg +  (1 | HarvestPeriod:Block), data = df.merge.bot2, link = "logit") 
-summary(fmm2) 
+sf = summary(fmm2) 
+coef = as.data.frame(sf[["coefficients"]])
+coef[coef$`Pr(>|z|)`<=0.05,]
 ```
 
 ```{r}
